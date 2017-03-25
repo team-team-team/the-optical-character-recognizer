@@ -58,7 +58,7 @@ import keras.callbacks
 
 OUTPUT_DIR = 'image_ocr'
 
-np.random.seed(55)
+np.random.seed(131)
 
 
 # this creates larger "blotches" of noise which look
@@ -151,6 +151,10 @@ def text_to_labels(text, num_classes):
             ret.append(ord(char) - ord('a'))
         elif char == ' ':
             ret.append(26)
+        elif char >= '0' and char <= '9':
+            ret.append(27 + ord(char) - ord('0'))
+        elif char >= 'A' and char <= 'Z':
+            ret.append(37 + ord(char) - ord('A'))
     return ret
 
 
@@ -158,9 +162,9 @@ def text_to_labels(text, num_classes):
 # to expand to uppercase and symbols
 
 def is_valid_str(in_str):
-    search = re.compile(r'[^a-z\ ]').search
-    return not bool(search(in_str))
-
+    #search = re.compile(r'[^a-z\ ]').search
+    #return not bool(search(in_str))
+    return True
 
 # Uses generator functions to supply train/test with
 # data. Image renderings are text are created on the fly
@@ -187,10 +191,11 @@ class TextImageGenerator(keras.callbacks.Callback):
 
     # num_words can be independent of the epoch size due to the use of generators
     # as max_string_len grows, num_words can grow
-    def build_word_list(self, num_words, max_string_len=None, mono_fraction=0.5):
+    def build_word_list(self, num_words, max_string_len=None, mono_fraction=0.4, bi_fraction = 0.4):
         assert max_string_len <= self.absolute_max_string_len
         assert num_words % self.minibatch_size == 0
         assert (self.val_split * num_words) % self.minibatch_size == 0
+        assert mono_fraction + bi_fraction <= 1.0
         self.num_words = num_words
         self.string_list = [''] * self.num_words
         tmp_string_list = []
@@ -205,6 +210,10 @@ class TextImageGenerator(keras.callbacks.Callback):
                 if len(tmp_string_list) == int(self.num_words * mono_fraction):
                     break
                 word = line.rstrip()
+                if np.random.randint(1, 11) == 1:
+                    word[0] = word[0].upper()
+                elif np.random.randint(1, 50) == 1:
+                    word = word.upper()
                 if max_string_len == -1 or max_string_len is None or len(word) <= max_string_len:
                     tmp_string_list.append(word)
 
@@ -212,13 +221,29 @@ class TextImageGenerator(keras.callbacks.Callback):
         with open(self.bigram_file, 'rt') as f:
             lines = f.readlines()
             for line in lines:
-                if len(tmp_string_list) == self.num_words:
+                if len(tmp_string_list) == int(self.num_words * bi_fraction + self.num_words * mono_fraction):
                     break
                 columns = line.lower().split()
                 word = columns[0] + ' ' + columns[1]
+                if np.random.randint(1, 30) == 1:
+                    word[0] = word[0].upper()
+                elif np.random.randint(1, 100) == 1:
+                    word = word.upper()
                 if is_valid_str(word) and \
                         (max_string_len == -1 or max_string_len is None or len(word) <= max_string_len):
                     tmp_string_list.append(word)
+        # numbers for classification
+        while True:
+            if len(tmp_string_list) == int(self.num_words):
+                break
+            number = '0123456789'
+            word = []
+            for i in range(np.random.randint(1, 30)):
+                word.append(number[np.random.randint(0,len(number))])
+            if is_valid_str(word) and \
+                    (max_string_len == -1 or max_string_len is None or len(word) <= max_string_len):
+                tmp_string_list.append(word)
+
         if len(tmp_string_list) != self.num_words:
             raise IOError('Could not pull enough words from supplied monogram and bigram files. ')
         # interlace to mix up the easy and hard words
